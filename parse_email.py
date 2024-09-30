@@ -68,28 +68,17 @@ async def process_files(input_file, output_file, limit, timeout, attempts):
         async with aiofiles.open(input_file, 'r') as domains:
             async for domain in domains:
                 async with semaphore:
-                    tasks.append(asyncio.create_task(helper_func(outfile, domain, timeout, attempts)))
-
+                    tasks.append(asyncio.create_task(scrape_mails(outfile, domain, timeout, attempts)))
                     tasks = list(filter(lambda t: t and not t.done(), tasks))
-                #tasks = [t for t in tasks if t and not t.done()]
-
             if tasks:
                 await asyncio.gather(*tasks)
 
-async def helper_func(outfile, domain, timeout, attempts):
-    try:
-        html = await fetch_html(domain, timeout, attempts)
-        if html:
-            mails = find_mail(html, domain)
-            if mails:
-                await outfile.write(f"{domain.strip()} , {mails}\n")
-    except Exception as e:
-        handle_errs(domain, e)
-        return None
-
-async def write_results(output_file, domain, mails):
-    if mails:
-        await output_file.write(f"{domain.strip()} , {mails}\n")
+async def scrape_mails(outfile, domain, timeout, attempts):
+    html = await fetch_html(domain, timeout, attempts)
+    if html:
+        mails = find_mail(html, domain)
+        if mails:
+            await outfile.write(f"{domain.strip()} , {mails}\n")
 
 async def fetch_html(url, timeout, attempts):
     #proxy = random.choice(PROXIES)
@@ -111,16 +100,12 @@ async def fetch_html(url, timeout, attempts):
 
 def find_mail(html, domain):
     emails = set()
-
-    if html:
-        try:
-            email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-            emails.update(set(re.findall(email_pattern, html)))
-            return emails
-        except Exception as e:
-            handle_errs(domain, e)
-    else:
-        handle_errs(domain)
+    try:
+        email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
+        emails.update(set(re.findall(email_pattern, html)))
+        return emails
+    except Exception as e:
+        handle_errs(domain, e)
 
 def handle_errs(domain, e=''):
     print(colored(f"[ERR] {domain.strip()}, {str(e)}","red"))
